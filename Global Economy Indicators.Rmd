@@ -1,0 +1,148 @@
+---
+title: "project1"
+output: html_document
+date: "2025-05-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+# Load required libraries
+library(tidyverse)
+library(cluster)
+library(factoextra)
+library(ggplot2)
+library(data.table)
+
+# Load the dataset
+df <- read.csv("/Users/vijaykrishnareddy/Documents/ESDS - 2ND SEM/SDM2/Project/Global Economy Indicators.csv", stringsAsFactors = FALSE)
+colnames(df) <- trimws(colnames(df))
+
+# Drop constant columns (excluding important identifiers)
+constant_cols <- sapply(df, function(x) length(unique(x)) == 1)
+important_identifiers <- c('Country', 'Currency', 'CountryID')
+drop_cols <- names(df)[constant_cols & !(names(df) %in% important_identifiers)]
+df <- df[, !(names(df) %in% drop_cols)]
+
+# Drop non-numeric columns for PCA
+non_numeric_cols <- c('Country', 'Currency', 'Year', 'CountryID')
+numeric_df <- df[, !(names(df) %in% non_numeric_cols)]
+
+# Handle missing values using mean imputation
+numeric_imputed <- numeric_df
+for (col in names(numeric_imputed)) {
+  if (is.numeric(numeric_imputed[[col]])) {
+    numeric_imputed[[col]][is.na(numeric_imputed[[col]])] <- mean(numeric_imputed[[col]], na.rm = TRUE)
+  }
+}
+
+# Standardize the data
+numeric_scaled <- scale(numeric_imputed)
+
+# Perform PCA
+pca <- prcomp(numeric_scaled, center = TRUE, scale. = TRUE)
+pca_data <- pca$x
+
+# Plot cumulative explained variance
+explained_var <- cumsum(pca$sdev^2 / sum(pca$sdev^2))
+
+# Save plot
+png("Cumulative Explained Variance by PCA Components.png", width = 1000, height = 500)
+plot(explained_var, type = 'b', pch = 16, xlab = 'Number of Components',
+     ylab = 'Cumulative Explained Variance', main = 'Cumulative Explained Variance by PCA Components')
+abline(h = 0.90, col = "red", lty = 2)
+legend("bottomright", legend = "90% Variance Threshold", col = "red", lty = 2)
+grid()
+dev.off()
+
+# Also display in RStudio
+plot(explained_var, type = 'b', pch = 16, xlab = 'Number of Components',
+     ylab = 'Cumulative Explained Variance', main = 'Cumulative Explained Variance by PCA Components')
+abline(h = 0.90, col = "red", lty = 2)
+legend("bottomright", legend = "90% Variance Threshold", col = "red", lty = 2)
+grid()
+
+# Retain enough components to explain ~90% variance (e.g., 6)
+n_components <- 6
+pca_data_k <- pca_data[, 1:n_components]
+
+# Elbow method for K-means
+wcss <- numeric(10)
+set.seed(42)
+for (k in 1:10) {
+  km <- kmeans(pca_data_k, centers = k, nstart = 25)
+  wcss[k] <- km$tot.withinss
+}
+
+# Save plot
+png("Elbow Method for Optimal K.png", width = 800, height = 500)
+plot(1:10, wcss, type = 'b', pch = 16, xlab = 'Number of Clusters', ylab = 'WCSS',
+     main = 'Elbow Method for Optimal K')
+abline(v = 3, col = "red", lty = 2)
+legend("topright", legend = "Optimal K = 3", col = "red", lty = 2)
+grid()
+dev.off()
+
+# display in RStudio
+plot(1:10, wcss, type = 'b', pch = 16, xlab = 'Number of Clusters', ylab = 'WCSS',
+     main = 'Elbow Method for Optimal K')
+abline(v = 3, col = "red", lty = 2)
+legend("topright", legend = "Optimal K = 3", col = "red", lty = 2)
+grid()
+
+# Apply K-means with optimal K
+set.seed(42)
+kmeans_result <- kmeans(pca_data_k, centers = 3, nstart = 25)
+clusters <- kmeans_result$cluster
+
+# Add cluster labels back to original df
+df$Cluster <- clusters
+df_with_clusters <- df[, c("Country", "Year", "Cluster")]
+
+# View sample of clustered countries
+print(head(df_with_clusters %>% group_by(Cluster, Country) %>% summarise(Count = n()), 20))
+
+# PCA + KMeans Clustering visualization (first 2 components)
+pca_df <- as.data.frame(pca_data)
+pca_df$Cluster <- as.factor(clusters)
+
+# Save plot
+png("pca_kmeans_clustering.png", width = 800, height = 600)
+ggplot(pca_df, aes(x = PC1, y = PC2, color = Cluster)) +
+  geom_point(size = 2, alpha = 0.7) +
+  labs(title = "PCA + KMeans Clustering of Countries", x = "PC1", y = "PC2") +
+  theme_minimal() +
+  theme(legend.title = element_text(size = 10)) +
+  scale_color_brewer(palette = "Set1")
+dev.off()
+
+# display in RStudio
+ggplot(pca_df, aes(x = PC1, y = PC2, color = Cluster)) +
+  geom_point(size = 2, alpha = 0.7) +
+  labs(title = "PCA + KMeans Clustering of Countries", x = "PC1", y = "PC2") +
+  theme_minimal() +
+  theme(legend.title = element_text(size = 10)) +
+  scale_color_brewer(palette = "Set1")
+
+```
